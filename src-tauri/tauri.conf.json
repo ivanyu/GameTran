@@ -12,9 +12,17 @@
   "app": {
     "windows": [
       {
-        "title": "gametran",
+        "title": "GameTran",
         "width": 800,
-        "height": 600
+        "height": 600,
+        "center": true,
+        "closable": true,
+        "create": true,
+        "visible": false,
+        "maximized": true,
+        "fullscreen": true,
+        "decorations": false,
+        "transparent": true
       }
     ],
     "security": {
