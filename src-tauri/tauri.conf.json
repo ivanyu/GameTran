@@ -12,6 +12,8 @@
   "app": {
     "windows": [
       {
+        "label": "main",
+        "url": "index.html",
         "title": "GameTran",
         "width": 800,
         "height": 600,
@@ -23,6 +25,15 @@
         "fullscreen": true,
         "decorations": false,
         "transparent": true
+      },
+      {
+        "label": "settings",
+        "url": "settings.html",
+        "title": "GameTran - Settings",
+        "width": 400,
+        "height": 100,
+        "visible": false,
+        "center": true
       }
     ],
     "security": {

@@ -4,7 +4,7 @@ import App from "./App";
 import {observable} from "mobx";
 import {register, ShortcutEvent, unregister} from "@tauri-apps/plugin-global-shortcut";
 import {debug, error, warn} from "@tauri-apps/plugin-log";
-import {getCurrentWindow} from "@tauri-apps/api/window";
+import {getCurrentWindow, Window} from "@tauri-apps/api/window";
 import { observer } from "mobx-react-lite";
 import {invoke} from "@tauri-apps/api/core";
 import {TrayIcon} from '@tauri-apps/api/tray';
@@ -14,6 +14,26 @@ import {exit} from '@tauri-apps/plugin-process';
 
 const TrayIconId = 'trayIconId';
 const Shortcut = 'Alt+P';
+const SettingsWindowID = 'settings';
+
+// Setup windows.
+const mainWindow = getCurrentWindow();
+
+await mainWindow.onCloseRequested((e) => {
+    e.preventDefault();
+    mainWindow.hide();
+});
+
+const settingsWindow = await Window.getByLabel(SettingsWindowID);
+if (!settingsWindow) {
+    await error('Settings window not found');
+    await exit(1);
+} else {
+    await settingsWindow.onCloseRequested((e) => {
+        e.preventDefault();
+        settingsWindow.hide();
+    });
+}
 
 type State = {
     active: boolean;
@@ -51,7 +71,7 @@ register(Shortcut, async (event: ShortcutEvent) => {
                 return;
             }
 
-            await getCurrentWindow().hide();
+            await mainWindow.hide();
 
             // Don't "optimize" hiding and showing here: the chance of an error in resuming is small and that's OK to pay for it with a bit of flickering
             // to allow the window hide in the normal circumstances faster.
@@ -64,9 +84,9 @@ register(Shortcut, async (event: ShortcutEvent) => {
             } catch (e) {
                 let message = `Error resuming process ${pid}: ${e}`;
                 await error(message);
-                await getCurrentWindow().show();
+                await mainWindow.show();
                 alert(message)
-                await getCurrentWindow().hide();
+                await mainWindow.hide();
             }
 
             if (resumedSuccessfully) {
@@ -91,9 +111,9 @@ register(Shortcut, async (event: ShortcutEvent) => {
             } catch (e) {
                 let message = `Error getting foreground process: ${e}`;
                 await error(message);
-                await getCurrentWindow().show();
+                await mainWindow.show();
                 alert(message)
-                await getCurrentWindow().hide();
+                await mainWindow.hide();
                 return;
             }
 
@@ -104,19 +124,19 @@ register(Shortcut, async (event: ShortcutEvent) => {
             } catch (e) {
                 let message = `Error suspending process ${pid}: ${e}`;
                 await error(message);
-                await getCurrentWindow().show();
+                await mainWindow.show();
                 alert(message)
-                await getCurrentWindow().hide();
+                await mainWindow.hide();
                 return;
             }
 
             state.active = true;
 
-            await getCurrentWindow().show();
+            await mainWindow.show();
             // Deal with residual task bar.
-            await getCurrentWindow().setDecorations(true);
-            await getCurrentWindow().setDecorations(false);
-            await getCurrentWindow().setFocus();
+            await mainWindow.setDecorations(true);
+            await mainWindow.setDecorations(false);
+            await mainWindow.setFocus();
         }
     }
 }).then(async () => {
@@ -124,6 +144,14 @@ register(Shortcut, async (event: ShortcutEvent) => {
 
     const menu = await Menu.new({
         items: [
+            {
+                id: 'settings',
+                text: 'Settings',
+                action: async () => {
+                    await settingsWindow?.emitTo(SettingsWindowID, "reload");
+                    await settingsWindow?.show()
+                }
+            },
             {
                 id: 'exit',
                 text: 'Exit',
