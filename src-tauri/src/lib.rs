@@ -1,6 +1,7 @@
 use crate::process::Process;
 
 mod process;
+mod screenshot;
 
 #[tauri::command]
 fn get_foreground_process() -> Result<Process, ()> {
@@ -10,6 +11,11 @@ fn get_foreground_process() -> Result<Process, ()> {
 #[tauri::command]
 fn suspend_process(pid: u32) -> Result<(), ()> {
     process::suspend_process(pid)
+}
+
+#[tauri::command]
+fn take_screenshot(hwnd: isize) -> Result<Vec<u8>, ()> {
+    screenshot::take_screenshot(hwnd)
 }
 
 #[tauri::command]
@@ -33,6 +39,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_foreground_process,
             suspend_process,
+            take_screenshot,
             resume_process,
             bring_window_to_foreground,
         ])
