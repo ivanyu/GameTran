@@ -21,12 +21,12 @@ type Process = {
     scale_factor: number;
 };
 
-const session = observable<State>({
+const state = observable<State>({
     active: false,
     process: undefined,
 });
 
-const AppWrapper = observer(() => session.active
+const AppWrapper = observer(() => state.active
     ? <App />
     : null);
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
@@ -40,8 +40,8 @@ register(Shortcut, async (event: ShortcutEvent) => {
     if (event.state === "Pressed") {
         debug('Shortcut pressed');
 
-        if (session.active) {
-            if (!session.process) {
+        if (state.active) {
+            if (!state.process) {
                 warn(`Session is active, but no process`);
                 return;
             }
@@ -50,10 +50,12 @@ register(Shortcut, async (event: ShortcutEvent) => {
 
             // Don't "optimize" hiding and showing here: the chance of an error in resuming is small and that's OK to pay for it with a bit of flickering
             // to allow the window hide in the normal circumstances faster.
-            const pid = session.process.pid;
+            const pid = state.process.pid;
             debug(`Resuming foreground process ${pid}`);
+            let resumedSuccessfully = false;
             try {
                 await invoke("resume_process", {pid});
+                resumedSuccessfully = true;
             } catch (e) {
                 let message = `Error resuming process ${pid}: ${e}`;
                 await error(message);
@@ -62,12 +64,25 @@ register(Shortcut, async (event: ShortcutEvent) => {
                 await getCurrentWindow().hide();
             }
 
-            session.active = false;
-            session.process = undefined;
+            if (resumedSuccessfully) {
+                debug("Restoring foreground window");
+                try {
+                    await invoke("bring_window_to_foreground", {hwnd: state.process.hwnd});
+                } catch (e) {
+                    let message = `Error restoring foreground window: ${e}`;
+                    await error(message);
+                    await getCurrentWindow().show();
+                    alert(message)
+                    await getCurrentWindow().hide();
+                }
+            }
+
+            state.active = false;
+            state.process = undefined;
         } else {
             debug("Getting foreground process");
             try {
-                session.process = await invoke<Process>("get_foreground_process");
+                state.process = await invoke<Process>("get_foreground_process");
             } catch (e) {
                 let message = `Error getting foreground process: ${e}`;
                 await error(message);
@@ -77,7 +92,7 @@ register(Shortcut, async (event: ShortcutEvent) => {
                 return;
             }
 
-            const pid = session.process.pid;
+            const pid = state.process.pid;
             debug(`Suspending foreground process ${pid}`);
             try {
                 await invoke("suspend_process", {pid});
@@ -90,7 +105,7 @@ register(Shortcut, async (event: ShortcutEvent) => {
                 return;
             }
 
-            session.active = true;
+            state.active = true;
 
             await getCurrentWindow().show();
             // Deal with residual task bar.

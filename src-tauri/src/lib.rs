@@ -17,6 +17,11 @@ fn resume_process(pid: u32) -> Result<(), ()> {
     process::resume_process(pid)
 }
 
+#[tauri::command]
+fn bring_window_to_foreground(hwnd: isize) -> Result<(), ()> {
+    process::bring_window_to_foreground(hwnd)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -28,6 +33,7 @@ pub fn run() {
             get_foreground_process,
             suspend_process,
             resume_process,
+            bring_window_to_foreground,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

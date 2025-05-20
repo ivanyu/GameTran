@@ -1,10 +1,11 @@
+use std::ffi::c_void;
 use scopeguard::defer;
 use serde::Serialize;
 use windows::Win32::Foundation::{CloseHandle, HWND};
 use windows::Win32::Graphics::Gdi::{MonitorFromWindow, MONITOR_DEFAULTTONULL};
 use windows::Win32::System::Threading::{OpenProcess, PROCESS_ALL_ACCESS};
 use windows::Win32::UI::HiDpi::{GetDpiForMonitor, SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE, MDT_DEFAULT};
-use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow};
 use windows_native::ntpsapi::{NtResumeProcess, NtSuspendProcess};
 use log::error;
 
@@ -103,6 +104,16 @@ pub(crate) fn resume_process(pid: u32) -> Result<(), ()> {
         }
     } else {
         error!("Error opening process");
+        Err(())
+    }
+}
+
+pub(crate) fn bring_window_to_foreground(hwnd: isize) -> Result<(), ()> {
+    let hwnd = HWND(hwnd as *mut c_void);
+    if unsafe { SetForegroundWindow(hwnd) }.as_bool() {
+        Ok(())
+    } else {
+        error!("Error setting foreground window");
         Err(())
     }
 }
