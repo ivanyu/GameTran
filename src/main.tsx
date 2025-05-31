@@ -7,7 +7,12 @@ import {debug, error, warn} from "@tauri-apps/plugin-log";
 import {getCurrentWindow} from "@tauri-apps/api/window";
 import { observer } from "mobx-react-lite";
 import {invoke} from "@tauri-apps/api/core";
+import {TrayIcon} from '@tauri-apps/api/tray';
+import {defaultWindowIcon} from "@tauri-apps/api/app";
+import {Menu} from '@tauri-apps/api/menu';
+import {exit} from '@tauri-apps/plugin-process';
 
+const TrayIconId = 'trayIconId';
 const Shortcut = 'Alt+P';
 
 type State = {
@@ -116,6 +121,22 @@ register(Shortcut, async (event: ShortcutEvent) => {
     }
 }).then(async () => {
     await debug("Global shortcut registered");
+
+    const menu = await Menu.new({
+        items: [
+            {
+                id: 'exit',
+                text: 'Exit',
+                action: async () => await exit(0)
+            },
+        ],
+    });
+    const options = {
+        id: TrayIconId,
+        icon: await defaultWindowIcon(),
+        menu,
+    };
+    await TrayIcon.new(options);
 }).catch(async (e) => {
     await error(`Error registering global shortcut: ${e}`);
 });
