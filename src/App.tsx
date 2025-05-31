@@ -1,5 +1,9 @@
-function App() {
-    return (<div>app</div>);
+interface AppProps {
+    screenshotUrl: string;
+}
+
+function App({screenshotUrl}: AppProps) {
+    return (<img src={screenshotUrl} />);
 }
 
 export default App;

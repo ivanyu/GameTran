@@ -1,11 +1,11 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-import {observable} from "mobx";
+import {action, makeObservable, observable} from "mobx";
 import {register, ShortcutEvent, unregister} from "@tauri-apps/plugin-global-shortcut";
 import {debug, error, warn} from "@tauri-apps/plugin-log";
 import {getCurrentWindow, Window} from "@tauri-apps/api/window";
-import { observer } from "mobx-react-lite";
+import {observer} from "mobx-react-lite";
 import {invoke} from "@tauri-apps/api/core";
 import {TrayIcon} from '@tauri-apps/api/tray';
 import {defaultWindowIcon} from "@tauri-apps/api/app";
@@ -35,9 +35,37 @@ if (!settingsWindow) {
     });
 }
 
-type State = {
+class State {
     active: boolean;
     process?: Process;
+    screenshotPng?: ArrayBuffer;
+    screenshotUrl?: string;
+
+    constructor() {
+        makeObservable(this, {
+            active: observable,
+            process: observable,
+            screenshotUrl: observable,
+            setScreenshot: action,
+            clear: action,
+        });
+    }
+
+    setScreenshot(png: ArrayBuffer) {
+        this.screenshotPng = new Uint8Array(png);
+        const blob = new Blob([new Uint8Array(png)], {type: 'image/png'});
+        if (this.screenshotUrl) {
+            URL.revokeObjectURL(this.screenshotUrl);
+        }
+        this.screenshotUrl = URL.createObjectURL(blob);
+    }
+
+    clear() {
+        this.active = false;
+        this.process = undefined;
+        this.screenshotPng = undefined;
+        this.screenshotUrl = undefined;
+    }
 }
 
 type Process = {
@@ -46,17 +74,16 @@ type Process = {
     scale_factor: number;
 };
 
-const state = observable<State>({
-    active: false,
-    process: undefined,
-});
+const state = observable<State>(new State());
 
-const AppWrapper = observer(() => state.active
-    ? <App />
-    : null);
+const AppWrapper = observer(({state}: {state: State}) => {
+    return state.active && state.screenshotUrl
+        ? <App screenshotUrl={state.screenshotUrl!}/>
+        : null
+});
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>
-        <AppWrapper />
+        <AppWrapper state={state} />
     </React.StrictMode>,
 );
 
@@ -114,6 +141,7 @@ register(Shortcut, async (event: ShortcutEvent) => {
                 await mainWindow.show();
                 alert(message)
                 await mainWindow.hide();
+                state.clear();
                 return;
             }
 
@@ -127,6 +155,27 @@ register(Shortcut, async (event: ShortcutEvent) => {
                 await mainWindow.show();
                 alert(message)
                 await mainWindow.hide();
+                state.clear();
+                return;
+            }
+
+            try {
+                state.setScreenshot(await invoke<ArrayBuffer>('take_screenshot', {hwnd: state.process.hwnd}));
+            } catch (e) {
+                const message = `Error taking screenshot: ${JSON.stringify(e)}`;
+                error(message);
+                await error(message);
+                await mainWindow.show();
+                alert(message)
+                await mainWindow.hide();
+
+                try {
+                    await invoke("resume_process", {pid});
+                } catch (e) {
+                    await error(`Error resuming process ${pid}: ${e}`);
+                }
+
+                state.clear();
                 return;
             }
 
