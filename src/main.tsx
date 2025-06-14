@@ -11,6 +11,19 @@ import {TrayIcon} from '@tauri-apps/api/tray';
 import {defaultWindowIcon} from "@tauri-apps/api/app";
 import {Menu} from '@tauri-apps/api/menu';
 import {exit} from '@tauri-apps/plugin-process';
+import {open, readTextFile} from '@tauri-apps/plugin-fs';
+
+// Load developer features.
+const DeveloperFeatures = {
+    mockProcessAndScreenshot: false,
+};
+{
+    const dev_features = await invoke<string[]>("dev_features");
+    if (dev_features.includes('mock_process_and_screenshot')) {
+        DeveloperFeatures.mockProcessAndScreenshot = true;
+        debug('DeveloperFeatures.mockProcessAndScreenshot: true');
+    }
+}
 
 const TrayIconId = 'trayIconId';
 const Shortcut = 'Alt+P';
@@ -87,6 +100,76 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     </React.StrictMode>,
 );
 
+async function getForegroundProcess(): Promise<Process> {
+    if (DeveloperFeatures.mockProcessAndScreenshot) {
+        await debug("Getting foreground process (mock)");
+        return  {pid: 0, hwnd: 0, scale_factor: 1};
+    } else {
+        await debug("Getting foreground process");
+        return await invoke<Process>("get_foreground_process");
+    }
+}
+
+async function suspendProcess(pid: number) {
+    if (DeveloperFeatures.mockProcessAndScreenshot) {
+        await debug(`Suspending foreground process ${pid} (mock)`);
+    } else {
+        await debug(`Suspending foreground process ${pid}`);
+        await invoke("suspend_process", {pid});
+    }
+}
+
+async function resumeProcess(pid: number) {
+    // Don't "optimize" hiding and showing here: the chance of an error in resuming is small and that's OK to pay for it with a bit of flickering
+    // to allow the window hide in the normal circumstances faster.
+    if (DeveloperFeatures.mockProcessAndScreenshot) {
+        await debug(`Resuming foreground process ${pid} (mock)`);
+    } else {
+        await debug(`Resuming foreground process ${pid}`);
+        await invoke("resume_process", {pid});
+    }
+}
+
+async function takeScreenshot(hwnd: number): Promise<ArrayBuffer> {
+    if (DeveloperFeatures.mockProcessAndScreenshot) {
+        await debug(`Taking screenshot of ${hwnd} (mock)`);
+
+        const configContent = await readTextFile(await invoke("dev_mock_screenshot_file", {file: "config.txt"}));
+        const lines = configContent.split('\n')
+            .map(line => line.trim())
+            .filter(line => line && !line.startsWith('#'));  // filter out empty lines and comments
+        
+        if (lines.length === 0) {
+            throw new Error("No valid screenshot files found in config");
+        }
+
+        const randomIndex = Math.floor(Math.random() * lines.length);
+        const selectedFile = lines[randomIndex];
+
+        const screenshotPath = await invoke<string>("dev_mock_screenshot_file", {file: selectedFile});
+        const file = await open(screenshotPath);
+        try {
+            const fileStat = await file.stat();
+            const buf = new Uint8Array(fileStat.size);
+            await file.read(buf);
+            return buf.buffer;
+        } finally {
+            await file.close();
+        }
+    } else {
+        await debug(`Taking screenshot of ${hwnd}`);
+        return await invoke<ArrayBuffer>('take_screenshot', {hwnd});
+    }
+}
+
+async function bringWindowToForeground(hwnd: number) {
+    if (DeveloperFeatures.mockProcessAndScreenshot) {
+        await debug(`Bringing ${hwnd} to foreground (mock)`);
+    } else {
+        return await invoke("bring_window_to_foreground", {hwnd});
+    }
+}
+
 unregister(Shortcut);
 register(Shortcut, async (event: ShortcutEvent) => {
     if (event.state === "Pressed") {
@@ -106,10 +189,15 @@ register(Shortcut, async (event: ShortcutEvent) => {
             debug(`Resuming foreground process ${pid}`);
             let resumedSuccessfully = false;
             try {
-                await invoke("resume_process", {pid});
+                await resumeProcess(pid);
                 resumedSuccessfully = true;
             } catch (e) {
-                let message = `Error resuming process ${pid}: ${e}`;
+                let message;
+                if (e instanceof Error) {
+                    message = `Error resuming process ${pid}: ${e.message}`;
+                } else {
+                    message = `Error resuming process ${pid}: ${JSON.stringify(e)}`;
+                }
                 await error(message);
                 await mainWindow.show();
                 alert(message)
@@ -119,9 +207,14 @@ register(Shortcut, async (event: ShortcutEvent) => {
             if (resumedSuccessfully) {
                 debug("Restoring foreground window");
                 try {
-                    await invoke("bring_window_to_foreground", {hwnd: state.process.hwnd});
+                    await bringWindowToForeground(state.process.hwnd)
                 } catch (e) {
-                    let message = `Error restoring foreground window: ${e}`;
+                    let message;
+                    if (e instanceof Error) {
+                        message = `Error restoring foreground window: ${e.message}`;
+                    } else {
+                        message = `Error restoring foreground window: ${JSON.stringify(e)}`;
+                    }
                     await error(message);
                     await getCurrentWindow().show();
                     alert(message)
@@ -132,11 +225,15 @@ register(Shortcut, async (event: ShortcutEvent) => {
             state.active = false;
             state.process = undefined;
         } else {
-            debug("Getting foreground process");
             try {
-                state.process = await invoke<Process>("get_foreground_process");
+                state.process = await getForegroundProcess();
             } catch (e) {
-                let message = `Error getting foreground process: ${e}`;
+                let message;
+                if (e instanceof Error) {
+                    message = `Error getting foreground process: ${e.message}`;
+                } else {
+                    message = `Error getting foreground process: ${JSON.stringify(e)}`;
+                }
                 await error(message);
                 await mainWindow.show();
                 alert(message)
@@ -148,9 +245,14 @@ register(Shortcut, async (event: ShortcutEvent) => {
             const pid = state.process.pid;
             debug(`Suspending foreground process ${pid}`);
             try {
-                await invoke("suspend_process", {pid});
+                await suspendProcess(pid);
             } catch (e) {
-                let message = `Error suspending process ${pid}: ${e}`;
+                let message;
+                if (e instanceof Error) {
+                    message = `Error suspending process ${pid}: ${e.message}`;
+                } else {
+                    message = `Error suspending process ${pid}: ${JSON.stringify(e)}`;
+                }
                 await error(message);
                 await mainWindow.show();
                 alert(message)
@@ -160,17 +262,21 @@ register(Shortcut, async (event: ShortcutEvent) => {
             }
 
             try {
-                state.setScreenshot(await invoke<ArrayBuffer>('take_screenshot', {hwnd: state.process.hwnd}));
+                state.setScreenshot(await takeScreenshot(state.process.hwnd));
             } catch (e) {
-                const message = `Error taking screenshot: ${JSON.stringify(e)}`;
-                error(message);
+                let message;
+                if (e instanceof Error) {
+                    message = `Error taking screenshot: ${e.message}`;
+                } else {
+                    message = `Error taking screenshot: ${JSON.stringify(e)}`;
+                }
                 await error(message);
                 await mainWindow.show();
                 alert(message)
                 await mainWindow.hide();
 
                 try {
-                    await invoke("resume_process", {pid});
+                    await resumeProcess(pid);
                 } catch (e) {
                     await error(`Error resuming process ${pid}: ${e}`);
                 }
