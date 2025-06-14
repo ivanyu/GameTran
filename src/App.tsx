@@ -1,3 +1,5 @@
+import './App.css';
+
 interface AppProps {
     screenshotUrl: string;
 }
