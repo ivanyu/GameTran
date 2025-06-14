@@ -76,6 +76,9 @@ class State {
     clear() {
         this.active = false;
         this.process = undefined;
+        if (this.screenshotUrl) {
+            URL.revokeObjectURL(this.screenshotUrl);
+        }
         this.screenshotPng = undefined;
         this.screenshotUrl = undefined;
     }
