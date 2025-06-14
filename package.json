@@ -12,6 +12,7 @@
   "dependencies": {
     "@fluentui/react-components": "^9.60.0",
     "@tauri-apps/api": "^2.3.0",
+    "@tauri-apps/plugin-fs": "^2.2.0",
     "@tauri-apps/plugin-global-shortcut": "^2.2.0",
     "@tauri-apps/plugin-log": "^2.2.3",
     "@tauri-apps/plugin-opener": "^2.2.6",
