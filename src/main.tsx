@@ -12,6 +12,8 @@ import {defaultWindowIcon} from "@tauri-apps/api/app";
 import {Menu} from '@tauri-apps/api/menu';
 import {exit} from '@tauri-apps/plugin-process';
 import {open, readTextFile} from '@tauri-apps/plugin-fs';
+import Settings from "./settings.ts";
+import getOcr, {OcrResponse} from "./ocr.ts";
 
 // Load developer features.
 const DeveloperFeatures = {
@@ -28,6 +30,14 @@ const DeveloperFeatures = {
 const TrayIconId = 'trayIconId';
 const Shortcut = 'Alt+P';
 const SettingsWindowID = 'settings';
+
+const settings = new Settings();
+try {
+    await settings.init();
+} catch (e) {
+    await error(`Error initializing settings: ${e}`);
+    throw e;
+}
 
 // Setup windows.
 const mainWindow = getCurrentWindow();
@@ -53,6 +63,7 @@ class State {
     process?: Process;
     screenshotPng?: ArrayBuffer;
     screenshotUrl?: string;
+    ocr?: OcrResponse;
 
     constructor() {
         makeObservable(this, {
@@ -71,6 +82,11 @@ class State {
             URL.revokeObjectURL(this.screenshotUrl);
         }
         this.screenshotUrl = URL.createObjectURL(blob);
+    }
+
+    setOcr(ocr: OcrResponse | undefined) {
+        this.ocr = ocr;
+        error(`OCR: ${JSON.stringify(ocr)}`);
     }
 
     clear() {
@@ -286,6 +302,16 @@ register(Shortcut, async (event: ShortcutEvent) => {
 
                 state.clear();
                 return;
+            }
+
+            try {
+                const googleCloudAPIKey = await settings.getGoogleCloudAPIKeyKey();
+                // TODO handle absence of key
+                const ocrImageBase64 = await invoke<string>('prepare_screenshot_for_ocr', {screenshotPng: state.screenshotPng, targetHeight: 1080});
+                const ocr = await getOcr(ocrImageBase64, googleCloudAPIKey!);
+                state.setOcr(ocr);
+            } catch (e) {
+                await error(`Error getting OCR: ${JSON.stringify(e)}`);
             }
 
             state.active = true;
