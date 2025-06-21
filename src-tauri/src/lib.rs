@@ -9,6 +9,7 @@ use crate::process::Process;
 mod process;
 #[cfg(target_os = "windows")]
 mod screenshot;
+mod ocr;
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
@@ -38,6 +39,11 @@ fn resume_process(pid: u32) -> Result<(), ()> {
 #[tauri::command]
 fn bring_window_to_foreground(hwnd: isize) -> Result<(), ()> {
     process::bring_window_to_foreground(hwnd)
+}
+
+#[tauri::command]
+fn prepare_screenshot_for_ocr(screenshot_png: Vec<u8>, target_height: u32) -> Result<String, ()> {
+    ocr::prepare_screenshot_for_ocr(screenshot_png.as_slice(), target_height)
 }
 
 #[tauri::command]
@@ -90,6 +96,7 @@ pub fn run() {
             resume_process,
             #[cfg(target_os = "windows")]
             bring_window_to_foreground,
+            prepare_screenshot_for_ocr,
             dev_features,
             #[cfg(feature = "mock_process_and_screenshot")]
             dev_mock_screenshot_file,

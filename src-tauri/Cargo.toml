@@ -30,6 +30,7 @@ tauri-plugin-store = "2.2.0"
 tauri-plugin-fs = "2.2.0"
 scopeguard = "1.2.0"
 image = "0.25.5"
+base64 = "0.22.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = {version = "0.58.0", features = [

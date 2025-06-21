@@ -11,17 +11,21 @@ import {
     tokens
 } from "@fluentui/react-components";
 import {error} from "@tauri-apps/plugin-log";
-import {Store} from '@tauri-apps/plugin-store'
 import {getCurrentWindow} from "@tauri-apps/api/window";
+import Settings from "./settings.ts";
 
-const GoogleCloudAPIKeyKey = "google_cloud_api_key";
-
-const store = await Store.load('settings.json')
+const settings = new Settings();
+try {
+    await settings.init();
+} catch (e) {
+    await error(`Error initializing settings: ${e}`);
+    throw e;
+}
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>
         <FluentProvider theme={webLightTheme}>
-            <Settings />
+            <SettingsView />
         </FluentProvider>
     </React.StrictMode>,
 );
@@ -35,7 +39,7 @@ const useStyles = makeStyles({
     },
 });
 
-function Settings() {
+function SettingsView() {
     const googleCloudAPIKeyInput = useId("input");
     const styles = useStyles();
     const [googleCloudAPIKey, setGoogleCloudAPIKey] = useState<string>("");
@@ -43,9 +47,7 @@ function Settings() {
     useEffect(() => {
         const unlisten = getCurrentWindow().listen("reload", async () => {
             try {
-                await store.reload();
-                // TODO more secure storage for secrets.
-                const v = await store.get<string>(GoogleCloudAPIKeyKey);
+                const v = await settings.getGoogleCloudAPIKeyKey();
                 if (!!v) {
                     setGoogleCloudAPIKey(v);
                 } else {
@@ -65,7 +67,7 @@ function Settings() {
 
     const onGoogleCloudAPIKeyChange = useCallback(async (event: CustomEvent<HTMLInputElement>, data: InputOnChangeData) => {
         try {
-            await store.set(GoogleCloudAPIKeyKey, data.value);
+            await settings.setGoogleCloudAPIKeyKey(data.value)
             setGoogleCloudAPIKey(data.value);
         } catch (e) {
             const message = `Error storing config: ${JSON.stringify(e)}`;
