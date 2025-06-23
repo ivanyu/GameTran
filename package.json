@@ -10,7 +10,8 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@fluentui/react-components": "^9.60.0",
+    "@fluentui/react-components": "^9.66.2",
+    "@fluentui/react-icons": "^2.0.304",
     "@tauri-apps/api": "^2.3.0",
     "@tauri-apps/plugin-fs": "^2.2.0",
     "@tauri-apps/plugin-global-shortcut": "^2.2.0",

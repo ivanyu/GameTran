@@ -14,6 +14,7 @@ import {exit} from '@tauri-apps/plugin-process';
 import {open, readTextFile, writeTextFile} from '@tauri-apps/plugin-fs';
 import Settings from "./settings.ts";
 import getOcr, {OcrResponse} from "./ocr.ts";
+import {FluentProvider, webLightTheme} from "@fluentui/react-components";
 
 // Load developer features.
 const DeveloperFeatures = {
@@ -59,20 +60,29 @@ if (!settingsWindow) {
 }
 
 class State {
-    active: boolean;
+    active: boolean = false;
     process?: Process;
     screenshotPng?: ArrayBuffer;
     screenshotUrl?: string;
-    ocr?: OcrResponse;
+    ocrResult?: OcrResponse;
+    loadingError?: string;
 
     constructor() {
         makeObservable(this, {
             active: observable,
-            process: observable,
             screenshotUrl: observable,
+            ocrResult: observable,
+            loadingError: observable,
+            setActive: action,
             setScreenshot: action,
+            setOcrResult: action,
+            setLoadingError: action,
             clear: action,
         });
+    }
+
+    setActive() {
+        this.active = true;
     }
 
     setScreenshot(png: ArrayBuffer) {
@@ -84,9 +94,12 @@ class State {
         this.screenshotUrl = URL.createObjectURL(blob);
     }
 
-    setOcr(ocr: OcrResponse | undefined) {
-        this.ocr = ocr;
-        error(`OCR: ${JSON.stringify(ocr)}`);
+    setOcrResult(ocrResult: OcrResponse | undefined) {
+        this.ocrResult = ocrResult;
+    }
+
+    setLoadingError(error: string) {
+        this.loadingError = error;
     }
 
     clear() {
@@ -97,6 +110,8 @@ class State {
         }
         this.screenshotPng = undefined;
         this.screenshotUrl = undefined;
+        this.ocrResult = undefined;
+        this.loadingError = undefined;
     }
 }
 
@@ -109,13 +124,15 @@ type Process = {
 const state = observable<State>(new State());
 
 const AppWrapper = observer(({state}: {state: State}) => {
-    return state.active && state.screenshotUrl
-        ? <App screenshotUrl={state.screenshotUrl!}/>
+    return state.active
+        ? <App screenshotUrl={state.screenshotUrl} ocrResult={state.ocrResult} loadingError={state.loadingError} />
         : null
 });
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>
-        <AppWrapper state={state} />
+        <FluentProvider theme={webLightTheme}>
+            <AppWrapper state={state} />
+        </FluentProvider>
     </React.StrictMode>,
 );
 
@@ -233,12 +250,13 @@ register(Shortcut, async (event: ShortcutEvent) => {
         debug('Shortcut pressed');
 
         if (state.active) {
+            await mainWindow.hide();
+
             if (!state.process) {
                 warn(`Session is active, but no process`);
+                state.clear();
                 return;
             }
-
-            await mainWindow.hide();
 
             // Don't "optimize" hiding and showing here: the chance of an error in resuming is small and that's OK to pay for it with a bit of flickering
             // to allow the window hide in the normal circumstances faster.
@@ -279,9 +297,16 @@ register(Shortcut, async (event: ShortcutEvent) => {
                 }
             }
 
-            state.active = false;
-            state.process = undefined;
+            state.clear();
         } else {
+            state.setActive();
+
+            await mainWindow.show();
+            // Deal with residual task bar.
+            await mainWindow.setDecorations(true);
+            await mainWindow.setDecorations(false);
+            await mainWindow.setFocus();
+
             try {
                 state.process = await getForegroundProcess();
             } catch (e) {
@@ -292,10 +317,7 @@ register(Shortcut, async (event: ShortcutEvent) => {
                     message = `Error getting foreground process: ${JSON.stringify(e)}`;
                 }
                 await error(message);
-                await mainWindow.show();
-                alert(message)
-                await mainWindow.hide();
-                state.clear();
+                state.setLoadingError(message);
                 return;
             }
 
@@ -311,10 +333,7 @@ register(Shortcut, async (event: ShortcutEvent) => {
                     message = `Error suspending process ${pid}: ${JSON.stringify(e)}`;
                 }
                 await error(message);
-                await mainWindow.show();
-                alert(message)
-                await mainWindow.hide();
-                state.clear();
+                state.setLoadingError(message);
                 return;
             }
 
@@ -328,33 +347,18 @@ register(Shortcut, async (event: ShortcutEvent) => {
                     message = `Error taking screenshot: ${JSON.stringify(e)}`;
                 }
                 await error(message);
-                await mainWindow.show();
-                alert(message)
-                await mainWindow.hide();
-
-                try {
-                    await resumeProcess(pid);
-                } catch (e) {
-                    await error(`Error resuming process ${pid}: ${e}`);
-                }
-
-                state.clear();
+                state.setLoadingError(message);
                 return;
             }
 
             try {
-                state.setOcr(await runOcr(state.screenshotPng!));
+                state.setOcrResult(await runOcr(state.screenshotPng!));
             } catch (e) {
-                await error(`Error getting OCR: ${JSON.stringify(e)}`);
+                const message = `Error running OCR: ${JSON.stringify(e)}`;
+                await error(message);
+                state.setLoadingError(message);
+                return;
             }
-
-            state.active = true;
-
-            await mainWindow.show();
-            // Deal with residual task bar.
-            await mainWindow.setDecorations(true);
-            await mainWindow.setDecorations(false);
-            await mainWindow.setFocus();
         }
     }
 }).then(async () => {
