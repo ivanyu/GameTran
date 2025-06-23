@@ -107,7 +107,8 @@ pub fn run() {
                 app.add_capability(
                     CapabilityBuilder::new("dev-main-read-resources")
                         .window("main")
-                        .permission_scoped("fs:allow-resource-read-recursive", vec!["/**"], vec![]),
+                        .permission_scoped("fs:allow-resource-read-recursive", vec!["/**"], vec![])
+                        .permission_scoped("fs:allow-resource-write-recursive", vec!["/**"], vec![]),
                 )
                 .unwrap();
             }

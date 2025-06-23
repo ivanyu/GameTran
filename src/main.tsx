@@ -11,7 +11,7 @@ import {TrayIcon} from '@tauri-apps/api/tray';
 import {defaultWindowIcon} from "@tauri-apps/api/app";
 import {Menu} from '@tauri-apps/api/menu';
 import {exit} from '@tauri-apps/plugin-process';
-import {open, readTextFile} from '@tauri-apps/plugin-fs';
+import {open, readTextFile, writeTextFile} from '@tauri-apps/plugin-fs';
 import Settings from "./settings.ts";
 import getOcr, {OcrResponse} from "./ocr.ts";
 
@@ -189,6 +189,44 @@ async function bringWindowToForeground(hwnd: number) {
     }
 }
 
+async function runOcr(screenshotPng: ArrayBuffer): Promise<OcrResponse> {
+    const ocrImageBase64 = await invoke<string>('prepare_screenshot_for_ocr', {screenshotPng, targetHeight: 1080});
+
+    if (DeveloperFeatures.mockProcessAndScreenshot) {
+        await debug("Running OCR in dev mode");
+        const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ocrImageBase64));
+        const hashHex = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+        const cacheFile = `dev/ocr_cache/${hashHex}.json`;
+        const cachePath = await invoke<string>("dev_get_path", {file: cacheFile});
+
+        try {
+            const cachedContent = await readTextFile(cachePath);
+            await debug(`OCR cache hit for ${hashHex}`);
+            return JSON.parse(cachedContent) as OcrResponse;
+        } catch (e) {
+            await debug(`OCR cache miss for ${hashHex}, calling API`);
+            const result = await callGoogleOcr(ocrImageBase64);
+            try {
+                await writeTextFile(cachePath, JSON.stringify(result));
+                await debug(`OCR result cached to ${hashHex}`);
+            } catch (e) {
+                await error(`Failed to cache OCR result: ${e}`);
+                throw e;
+            }
+
+            return result;
+        }
+    } else {
+        return callGoogleOcr(ocrImageBase64);
+    }
+}
+
+async function callGoogleOcr(ocrImageBase64: string): Promise<OcrResponse> {
+    const googleCloudAPIKey = await settings.getGoogleCloudAPIKeyKey();
+    // TODO handle absence of key
+    return await getOcr(ocrImageBase64, googleCloudAPIKey!);
+}
+
 unregister(Shortcut);
 register(Shortcut, async (event: ShortcutEvent) => {
     if (event.state === "Pressed") {
@@ -305,11 +343,7 @@ register(Shortcut, async (event: ShortcutEvent) => {
             }
 
             try {
-                const googleCloudAPIKey = await settings.getGoogleCloudAPIKeyKey();
-                // TODO handle absence of key
-                const ocrImageBase64 = await invoke<string>('prepare_screenshot_for_ocr', {screenshotPng: state.screenshotPng, targetHeight: 1080});
-                const ocr = await getOcr(ocrImageBase64, googleCloudAPIKey!);
-                state.setOcr(ocr);
+                state.setOcr(await runOcr(state.screenshotPng!));
             } catch (e) {
                 await error(`Error getting OCR: ${JSON.stringify(e)}`);
             }
