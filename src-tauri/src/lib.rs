@@ -60,19 +60,19 @@ fn dev_features() -> Result<Vec<String>, ()> {
 
 #[cfg(feature = "mock_process_and_screenshot")]
 #[tauri::command]
-fn dev_mock_screenshot_file(file: String) -> Result<String, ()> {
+fn dev_get_path(file: String) -> Result<String, ()> {
     let cd = std::env::current_dir().map_err(|e| {
         error!("Failed to get current working directory: {}", e);
         ()
     })?;
     let final_path = cd
-        .join("../dev/screenshots")
-        .join(file)
+        .join("..")
         .canonicalize()
         .map_err(|e| {
             error!("Failed to canonicalize: {}", e);
             ()
-        })?;
+        })?
+        .join(file);
     Ok(final_path.to_str().unwrap().to_string())
 }
 
@@ -99,7 +99,7 @@ pub fn run() {
             prepare_screenshot_for_ocr,
             dev_features,
             #[cfg(feature = "mock_process_and_screenshot")]
-            dev_mock_screenshot_file,
+            dev_get_path,
         ])
         .setup(|#[allow(unused_variables)] app| {
             #[cfg(feature = "mock_process_and_screenshot")]

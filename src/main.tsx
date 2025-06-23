@@ -153,7 +153,7 @@ async function takeScreenshot(hwnd: number): Promise<ArrayBuffer> {
     if (DeveloperFeatures.mockProcessAndScreenshot) {
         await debug(`Taking screenshot of ${hwnd} (mock)`);
 
-        const configContent = await readTextFile(await invoke("dev_mock_screenshot_file", {file: "config.txt"}));
+        const configContent = await readTextFile(await invoke("dev_get_path", {file: "dev/screenshots/config.txt"}));
         const lines = configContent.split('\n')
             .map(line => line.trim())
             .filter(line => line && !line.startsWith('#'));  // filter out empty lines and comments
@@ -165,7 +165,7 @@ async function takeScreenshot(hwnd: number): Promise<ArrayBuffer> {
         const randomIndex = Math.floor(Math.random() * lines.length);
         const selectedFile = lines[randomIndex];
 
-        const screenshotPath = await invoke<string>("dev_mock_screenshot_file", {file: selectedFile});
+        const screenshotPath = await invoke<string>("dev_get_path", {file: `dev/screenshots/${selectedFile}`});
         const file = await open(screenshotPath);
         try {
             const fileStat = await file.stat();
