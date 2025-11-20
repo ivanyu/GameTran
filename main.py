@@ -1,62 +1,67 @@
 import sys
-import json
-from PyQt6.QtWidgets import QApplication, QMainWindow, QGraphicsView, QGraphicsScene
-from PyQt6.QtGui import QPixmap, QKeyEvent, QPen, QPolygonF, QColor
-from PyQt6.QtCore import Qt, QPointF
+from typing import override, Optional
+
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QKeyEvent
+from PyQt6.QtWidgets import QApplication, QMainWindow
+
+from config import Config
+from ocr import OcrWorker, OCRResult
+from overlay import Overlay
+from screenshot import take_screenshot
+from spinner import Spinner
+from analysis import AnalysisWindow
 
 
-class ImageViewer(QMainWindow):
+class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.init_ui()
+        self.setContentsMargins(0, 0, 0, 0)
 
-    def init_ui(self) -> None:
-        # Create graphics view and scene
-        self.scene = QGraphicsScene(self)
-        self.view = QGraphicsView(self.scene, self)
-        self.setCentralWidget(self.view)
+        self.spinner = Spinner()
+        self.setCentralWidget(self.spinner)
+        # self.showFullScreen()
 
-        # Load and display image
-        pixmap = QPixmap("dev/screenshots/screen_atom_0.png")
-        self.scene.addPixmap(pixmap)
+        self._screenshot = take_screenshot()
+        self.ocr_worker = OcrWorker(self._screenshot, target_height=1080)
+        self.ocr_worker.finished.connect(self._on_ocr_finished)
+        self.ocr_worker.error.connect(self.spinner.set_error)
+        self.ocr_worker.start()
 
-        # Load OCR data and draw bounding boxes
-        self.load_and_draw_bounding_boxes()
+        self._config = Config()
+        self._analysis_window = AnalysisWindow(self._config)
 
-        # Set window to fullscreen
-        self.showFullScreen()
+        self._ocr: Optional[OCRResult] = None
 
-    def load_and_draw_bounding_boxes(self) -> None:
-        # Load OCR cache JSON
-        ocr_file = "dev/ocr_cache/18ba1504a6092b1c2ba0ab6f276ad1eedd637c15bf529a2b16d90eca0a2dfb99.json"
-        with open(ocr_file, 'r', encoding='utf-8') as f:
-            ocr_data = json.load(f)
 
-        # Create pen for drawing rectangles
-        pen = QPen(QColor(255, 0, 0, 180))  # Red with transparency
-        pen.setWidth(2)
+        self._analysis_window.init(['Il', "s'agit", 'du', 'registre', 'que', 'vous', 'avez', 'trouvé', 'dans', 'la', 'benne', 'à', 'ordure', '.'], "fr")
+        self._analysis_window.exec()
 
-        # Draw bounding box for each word
-        for word in ocr_data.get('words', []):
-            bbox = word['boundingBox']
-            # Convert bounding box points to QPolygonF
-            polygon = QPolygonF([
-                QPointF(point['x'], point['y']) for point in bbox
-            ])
-            # Add polygon to scene
-            polygon_item = self.scene.addPolygon(polygon, pen)
-            # Make it possible to interact with in the future
-            polygon_item.setFlag(polygon_item.GraphicsItemFlag.ItemIsSelectable)
+    def _on_ocr_finished(self, ocr: OCRResult) -> None:
+        self._ocr = ocr
 
+        overlay = Overlay()
+        overlay.set_screenshot(self._screenshot)
+        overlay.set_ocr(ocr)
+        overlay.analysis_requested.connect(self._on_analysis_requested)
+        self.setCentralWidget(overlay)
+        overlay.setFocus()
+
+    def _on_analysis_requested(self, words: list[str]) -> None:
+        if self._ocr:
+            self._analysis_window.init(words, self._ocr.detectedLanguage)
+            self._analysis_window.exec()
+
+    @override
     def keyPressEvent(self, event: QKeyEvent) -> None:
-        # Exit on Esc key
-        if event.key() == Qt.Key.Key_Escape:
+        if event.key() in {Qt.Key.Key_Escape, Qt.Key.Key_Q}:
             self.close()
+        super().keyPressEvent(event)
 
 
 def main() -> None:
     app = QApplication(sys.argv)
-    viewer = ImageViewer()
+    viewer = MainWindow()
     sys.exit(app.exec())
 
 
