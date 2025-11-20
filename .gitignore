@@ -1,0 +1,9 @@
+.idea
+.env
+.venv
+/build
+/dist
+GameTran.spec
+
+# Auto-generated version file
+version.py
