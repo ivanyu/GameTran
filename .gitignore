@@ -1,0 +1,10 @@
+.idea
+.env
+.venv
+/build
+/dist
+/dev
+main.spec
+
+# Auto-generated version file
+version.py
